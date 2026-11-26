@@ -1,0 +1,66 @@
+# Magento Open Source test store: http://localhost:8083
+# Run ./setup.sh rather than compose directly; it downloads and installs Magento, then adds products and keys.
+# Local test data only. Passwords are fixed on purpose.
+#
+# Versions (checked together on 2026-11-26, against Magento 2.4.8 system requirements):
+#   Magento Open Source 2.4.8-p5 (from the Mage-OS mirror: no Adobe keys needed)
+#   PHP 8.3 + Apache (Magento 2.4.8 supports PHP 8.2-8.4), Composer 2.8.12
+#   MariaDB 11.4 LTS, OpenSearch 2.19.8 (+ analysis-icu, analysis-phonetic plugins)
+
+name: magento
+
+services:
+  db:
+    image: docker.io/library/mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: magento
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  opensearch:
+    build: ./opensearch
+    image: magento-store/opensearch:2.19.8
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms1g -Xmx1g
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+    volumes:
+      - search:/usr/share/opensearch/data
+    healthcheck:
+      # Port 9200 accepting connections (no curl needed inside the image).
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9200"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  magento:
+    build: ./php
+    image: magento-store/php:8.3-apache
+    restart: unless-stopped
+    ports:
+      - "8083:80"
+    depends_on:
+      db:
+        condition: service_healthy
+      opensearch:
+        condition: service_healthy
+    environment:
+      COMPOSER_HOME: /tmp/composer
+      COMPOSER_MEMORY_LIMIT: "-1"
+    volumes:
+      - html:/var/www/html
+
+volumes:
+  db:
+  search:
+  html:

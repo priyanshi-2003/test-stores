@@ -1,0 +1,40 @@
+# OpenCart test store: http://localhost:8084
+# Run ./setup.sh rather than compose directly; it installs OpenCart and allows API access.
+# Local test data only. Passwords are fixed on purpose.
+#
+# Versions (checked together on 2026-11-26):
+#   OpenCart 4.1.0.4 (official release zip) on PHP 8.3 + Apache (built from ./Dockerfile)
+#   MariaDB 11.4 LTS
+
+name: opencart
+
+services:
+  db:
+    image: docker.io/library/mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: opencart
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  opencart:
+    build: .
+    image: opencart-store/opencart:4.1.0.4
+    restart: unless-stopped
+    ports:
+      - "8084:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - html:/var/www/html
+
+volumes:
+  db:
+  html:
